@@ -1,0 +1,55 @@
+{
+  "manifest_version": 3,
+  "name": "Tama",
+  "version": "0.4.0",
+  "description": "Teach Tama a browser workflow by demonstrating it once.",
+  "permissions": [
+    "storage",
+    "tabs",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>",
+    "http://localhost:8787/*"
+  ],
+  "action": {
+    "default_title": "Tama",
+    "default_icon": {
+      "16": "assets/tama-cat-16.png",
+      "32": "assets/tama-cat-32.png",
+      "48": "assets/tama-cat-48.png",
+      "128": "assets/tama-cat-128.png"
+    }
+  },
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "src/content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "assets/tama-cat-16.png",
+    "32": "assets/tama-cat-32.png",
+    "48": "assets/tama-cat-48.png",
+    "128": "assets/tama-cat-128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "assets/tama-brand.png"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
+}

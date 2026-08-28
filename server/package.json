@@ -1,0 +1,6 @@
+{
+  "name": "tama-server",
+  "version": "0.2.0",
+  "private": true,
+  "scripts": { "dev": "node --watch src/index.js", "start": "node src/index.js" }
+}
