@@ -1,3 +1,5 @@
+<img width="493" height="209" alt="Screenshot 2026-08-29 at 3 05 35 AM" src="https://github.com/user-attachments/assets/a6891013-3a8e-462a-9ed5-b7c9dbb15e27" />
+
 # Tama
 
 > Show it once. It does it again.
