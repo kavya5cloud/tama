@@ -1,66 +1,89 @@
-const http = require('http');
+import http from "node:http";
+import { createTask } from "./orchestrator/orchestrator.js";
+import { evaluateAction } from "./policy/policyEngine.js";
 
-const PORT = 8787;
+const PORT = Number(process.env.PORT || 8787);
 
-function json(res, status, body) {
-  const data = JSON.stringify(body);
+function sendJson(res, status, data) {
   res.writeHead(status, {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Allow-Methods': 'POST,GET,OPTIONS'
+    "Content-Type": "application/json; charset=utf-8",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Methods": "GET,POST,OPTIONS"
   });
-  res.end(data);
+
+  res.end(JSON.stringify(data));
 }
 
-function inferVariables(events = []) {
-  return events.filter(e => e.type === 'input' && e.value).map((e, i) => ({
-    name: `input_${i + 1}`,
-    source: e.target?.label || 'demonstrated input',
-    type: 'string'
-  }));
-}
+async function readJson(req) {
+  const chunks = [];
 
-function compile(goal, events) {
-  const steps = [];
-  for (const e of events) {
-    if (!['navigate','click','input','submit'].includes(e.type)) continue;
-    const operation = e.type === 'navigate' ? 'browser.navigate' : e.type === 'click' ? 'browser.click' : e.type === 'input' ? 'browser.fill' : 'browser.submit';
-    const label = e.type === 'navigate'
-      ? `Open ${e.url}`
-      : e.type === 'click'
-        ? `Click ${e.target?.label || 'element'}`
-        : e.type === 'input'
-          ? `Enter text into ${e.target?.label || 'field'}`
-          : 'Submit form';
-    steps.push({ type: e.type, operation, label, target: e.target || null });
+  for await (const chunk of req) {
+    chunks.push(chunk);
   }
-  return {
-    version: 1,
-    name: goal,
-    variables: inferVariables(events),
-    steps,
-    assertions: ['Final browser state is reachable after the demonstrated actions.']
-  };
+
+  if (!chunks.length) return {};
+
+  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
-const server = http.createServer((req, res) => {
-  if (req.method === 'OPTIONS') return json(res, 204, {});
-  if (req.method === 'GET' && req.url === '/health') return json(res, 200, { ok: true, service: 'tama' });
-  if (req.method === 'POST' && req.url === '/compile') {
-    let body = '';
-    req.on('data', chunk => body += chunk);
-    req.on('end', () => {
-      try {
-        const input = JSON.parse(body || '{}');
-        json(res, 200, { workflow: compile(input.goal || 'Untitled workflow', input.events || []) });
-      } catch (error) {
-        json(res, 400, { error: error.message });
-      }
+const server = http.createServer(async (req, res) => {
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Headers": "Content-Type",
+      "Access-Control-Allow-Methods": "GET,POST,OPTIONS"
     });
-    return;
+    return res.end();
   }
-  json(res, 404, { error: 'Not found' });
+
+  try {
+    if (req.method === "GET" && req.url === "/health") {
+      return sendJson(res, 200, {
+        ok: true,
+        service: "tama-server",
+        version: "0.3.0"
+      });
+    }
+
+    if (req.method === "POST" && req.url === "/tasks") {
+      const body = await readJson(req);
+
+      if (!body.goal?.trim()) {
+        return sendJson(res, 400, {
+          error: "goal is required"
+        });
+      }
+
+      const task = createTask(body.goal);
+
+      return sendJson(res, 200, {
+        ok: true,
+        task
+      });
+    }
+
+    if (req.method === "POST" && req.url === "/policy/check") {
+      const body = await readJson(req);
+
+      return sendJson(res, 200, {
+        ok: true,
+        ...evaluateAction(body)
+      });
+    }
+
+    return sendJson(res, 404, {
+      error: "Not found"
+    });
+  } catch (error) {
+    console.error(error);
+
+    return sendJson(res, 500, {
+      error: error.message
+    });
+  }
 });
 
-server.listen(PORT, () => console.log(`Tama server listening on http://localhost:${PORT}`));
+server.listen(PORT, () => {
+  console.log(`Tama server running on http://localhost:${PORT}`);
+});
