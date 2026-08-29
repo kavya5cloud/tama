@@ -16,15 +16,15 @@
         !chrome.runtime ||
         !chrome.runtime.id
       ) {
-        return Promise.resolve(null);
+        return Promise.reject(
+          new Error("Tama extension context is unavailable.")
+        );
       }
 
-      return chrome.runtime
-        .sendMessage(message)
-        .catch(() => null);
+      return chrome.runtime.sendMessage(message);
 
-    } catch (_) {
-      return Promise.resolve(null);
+    } catch (error) {
+      return Promise.reject(error);
     }
   }
 
@@ -330,7 +330,90 @@
       .result.warning {
         color: #8a5b2d;
       }
-    </style>
+    
+    
+    /* ============================================================
+       TAMA TEXT COLOR FIX
+       Explicit colors prevent the host webpage from affecting
+       text inside the Tama shadow UI.
+       ============================================================ */
+
+    :host {
+      color: #292824 !important;
+    }
+
+    .panel,
+    .panel * {
+      color: #292824;
+    }
+
+    textarea,
+    input,
+    select {
+      color: #292824 !important;
+      -webkit-text-fill-color: #292824 !important;
+      caret-color: #292824 !important;
+    }
+
+    textarea::placeholder,
+    input::placeholder {
+      color: #8d877e !important;
+      -webkit-text-fill-color: #8d877e !important;
+      opacity: 1 !important;
+    }
+
+    button {
+      color: #292824;
+    }
+
+    button.primary {
+      color: #ffffff !important;
+      -webkit-text-fill-color: #ffffff !important;
+    }
+
+    button.ghost {
+      color: #5f5a53 !important;
+      -webkit-text-fill-color: #5f5a53 !important;
+    }
+
+    .goal,
+    .reviewgoal,
+    .watch-copy,
+    .reviewtitle,
+    .reviewtitle *,
+    .request,
+    .request *,
+    .vars,
+    .vars *,
+    .steps,
+    .steps *,
+    .result,
+    .result *,
+    .progress,
+    .progress *,
+    .minimalcopy,
+    .count,
+    .live,
+    .live *,
+    .footrow,
+    .footrow * {
+      color: #292824;
+    }
+
+    .live {
+      color: #536d59 !important;
+    }
+
+    .live i {
+      background: #6b9474 !important;
+    }
+
+    .error {
+      color: #8b3f3f !important;
+      -webkit-text-fill-color: #8b3f3f !important;
+    }
+
+</style>
 
     <section class="panel">
 
@@ -547,7 +630,23 @@
   }
 
   function setView(name) {
-    ensureUI();
+  
+  chrome.runtime.onMessage.addListener(
+    (message) => {
+      if (message?.type === "TOGGLE_TAMA_UI") {
+        try {
+          toggleUI();
+        } catch (error) {
+          console.log(
+            "Tama UI toggle failed:",
+            error.message
+          );
+        }
+      }
+    }
+  );
+
+  ensureUI();
 
     shadow
       .querySelectorAll("[data-view]")
@@ -818,60 +917,80 @@
     }
   }
 
-  function startResearch() {
+    async function startResearch() {
+      setView("research");
 
-    setView("research");
+      const status =
+        shadow.querySelector("#researchStatus");
 
-    const status =
-      shadow.querySelector(
-        "#researchStatus"
-      );
+      const bar =
+        shadow.querySelector("#researchBar");
 
-    const bar =
-      shadow.querySelector(
-        "#researchBar"
-      );
+      if (!currentTask) {
+        if (status) {
+          status.textContent = "No task found.";
+        }
+        return;
+      }
 
-    const stages = [
-      "Searching approved sources",
-      "Finding supplier websites",
-      "Extracting supplier information",
-      "Removing duplicates",
-      "Checking evidence"
-    ];
+      if (status) {
+        status.textContent = "Tama is starting...";
+      }
 
-    let index = 0;
+      if (bar) {
+        bar.style.width = "20%";
+      }
 
-    clearInterval(
-      researchTimer
-    );
+      try {
+        const response =
+          await safeSendMessage({
+            type: "RUN_BROWSER_AGENT",
+            objective: currentTask.objective
+          });
 
-    researchTimer =
-      setInterval(() => {
+        console.log(
+          "Tama browser agent:",
+          response
+        );
 
-        if (index >= stages.length) {
-          clearInterval(
-            researchTimer
+        if (!response?.ok) {
+          throw new Error(
+            response?.error ||
+            "Browser agent failed."
           );
-          return;
+        }
+
+        if (bar) {
+          bar.style.width = "100%";
         }
 
         if (status) {
           status.textContent =
-            stages[index];
+            response.result?.message ||
+            "Task completed.";
         }
+
+        setTimeout(() => {
+          setView("review");
+        }, 800);
+
+      } catch (error) {
+        console.error(
+          "Tama browser agent failed:",
+          error
+        );
 
         if (bar) {
-          bar.style.width =
-            `${((index + 1) /
-              stages.length) * 100}%`;
+          bar.style.width = "100%";
         }
 
-        index++;
-
-      }, 900);
-  }
-
+        if (status) {
+          status.textContent =
+            error.message ||
+            "Tama could not complete the task.";
+        }
+      }
+    }
   function stopResearch() {
 
     clearInterval(
